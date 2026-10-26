@@ -1301,6 +1301,8 @@ type TrafficFeatures struct {
 	RequestBuffer *RequestBuffer `json:"requestBuffer,omitempty" yaml:"requestBuffer,omitempty"`
 	// RequestBodyBufferLimit is the maximum number of bytes Envoy may buffer for an individual request body.
 	RequestBodyBufferLimit *uint64 `json:"requestBodyBufferLimit,omitempty" yaml:"requestBodyBufferLimit,omitempty"`
+	// AdaptiveConcurrency defines the schema for the adaptive concurrency filter.
+	AdaptiveConcurrency *AdaptiveConcurrency `json:"adaptiveConcurrency,omitempty" yaml:"adaptiveConcurrency,omitempty"`
 }
 
 // ClusterFeatures returns the cluster-scoped subset of these traffic features, or nil if there are
@@ -2007,6 +2009,33 @@ type FaultInjectionAbort struct {
 	GrpcStatus *uint32 `json:"grpcStatus,omitempty" yaml:"grpcStatus,omitempty"`
 	// Percentage defines the percentage of requests to be aborted.
 	Percentage *float32 `json:"percentage,omitempty" yaml:"percentage,omitempty"`
+}
+
+// AdaptiveConcurrency defines the adaptive concurrency filter settings.
+// +k8s:deepcopy-gen=true
+type AdaptiveConcurrency struct {
+	// Name is a unique name for this adaptive concurrency config (used for filter naming).
+	Name string `json:"name" yaml:"name"`
+	// SampleAggregatePercentile is the percentile to use when summarizing aggregated samples.
+	SampleAggregatePercentile *float64 `json:"sampleAggregatePercentile,omitempty" yaml:"sampleAggregatePercentile,omitempty"`
+	// MaxConcurrencyLimit is the allowed upper-bound on the calculated concurrency limit.
+	MaxConcurrencyLimit *uint32 `json:"maxConcurrencyLimit,omitempty" yaml:"maxConcurrencyLimit,omitempty"`
+	// ConcurrencyUpdateInterval is the period of time between recalculations of the concurrency limit.
+	ConcurrencyUpdateInterval *metav1.Duration `json:"concurrencyUpdateInterval,omitempty" yaml:"concurrencyUpdateInterval,omitempty"`
+	// MinRTTCalcInterval is the time interval between recalculating the minimum RTT.
+	MinRTTCalcInterval *metav1.Duration `json:"minRTTCalcInterval,omitempty" yaml:"minRTTCalcInterval,omitempty"`
+	// FixedMinRTT sets a fixed minimum RTT value instead of dynamically sampling it.
+	FixedMinRTT *metav1.Duration `json:"fixedMinRTT,omitempty" yaml:"fixedMinRTT,omitempty"`
+	// RequestCount is the number of requests to aggregate during minRTT recalculation.
+	RequestCount *uint32 `json:"requestCount,omitempty" yaml:"requestCount,omitempty"`
+	// Jitter adds randomized delay to the start of the minRTT calculation, as a percentage.
+	Jitter *float64 `json:"jitter,omitempty" yaml:"jitter,omitempty"`
+	// MinConcurrency is the concurrency limit used while measuring the minRTT.
+	MinConcurrency *uint32 `json:"minConcurrency,omitempty" yaml:"minConcurrency,omitempty"`
+	// Buffer is the amount added to the measured minRTT for stability, as a percentage.
+	Buffer *float64 `json:"buffer,omitempty" yaml:"buffer,omitempty"`
+	// ConcurrencyLimitExceededStatus is the HTTP status code returned when the limit is exceeded.
+	ConcurrencyLimitExceededStatus *int32 `json:"concurrencyLimitExceededStatus,omitempty" yaml:"concurrencyLimitExceededStatus,omitempty"`
 }
 
 // AdmissionControl defines the schema for admission control based on success rate.

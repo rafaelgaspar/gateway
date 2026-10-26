@@ -1956,6 +1956,7 @@ func (t *Translator) buildTrafficFeatures(policy *egv1a1.BackendTrafficPolicy, o
 		ro          *ir.ResponseOverride
 		rb          *ir.RequestBuffer
 		rbbl        *uint64
+		ac          *ir.AdaptiveConcurrency
 		cp          []*ir.Compression
 		httpUpgrade []ir.HTTPUpgradeConfig
 		err         error
@@ -1992,6 +1993,8 @@ func (t *Translator) buildTrafficFeatures(policy *egv1a1.BackendTrafficPolicy, o
 		errs = errors.Join(errs, err)
 	}
 
+	ac = buildAdaptiveConcurrency(policy)
+
 	if err = validateTelemetry(policy.Spec.Telemetry); err != nil {
 		err = perr.WithMessage(err, "Telemetry")
 		errs = errors.Join(errs, err)
@@ -2017,7 +2020,53 @@ func (t *Translator) buildTrafficFeatures(policy *egv1a1.BackendTrafficPolicy, o
 		Telemetry:              buildBackendTelemetry(policy.Spec.Telemetry),
 		RequestBuffer:          rb,
 		RequestBodyBufferLimit: rbbl,
+		AdaptiveConcurrency:    ac,
 	}, errs
+}
+
+func buildAdaptiveConcurrency(policy *egv1a1.BackendTrafficPolicy) *ir.AdaptiveConcurrency {
+	if policy.Spec.AdaptiveConcurrency == nil {
+		return nil
+	}
+
+	ac := &ir.AdaptiveConcurrency{
+		Name:                           irConfigName(policy),
+		ConcurrencyLimitExceededStatus: policy.Spec.AdaptiveConcurrency.ConcurrencyLimitExceededStatus,
+	}
+
+	gc := policy.Spec.AdaptiveConcurrency.GradientController
+	if gc == nil {
+		return ac
+	}
+
+	ac.SampleAggregatePercentile = gc.SampleAggregatePercentile
+	if gc.ConcurrencyLimitParams != nil {
+		ac.MaxConcurrencyLimit = gc.ConcurrencyLimitParams.MaxConcurrencyLimit
+		if gc.ConcurrencyLimitParams.ConcurrencyUpdateInterval != nil {
+			if d, err := time.ParseDuration(string(*gc.ConcurrencyLimitParams.ConcurrencyUpdateInterval)); err == nil {
+				ac.ConcurrencyUpdateInterval = &metav1.Duration{Duration: d}
+			}
+		}
+	}
+	if gc.MinRTTCalcParams != nil {
+		mc := gc.MinRTTCalcParams
+		ac.RequestCount = mc.RequestCount
+		ac.Jitter = mc.Jitter
+		ac.MinConcurrency = mc.MinConcurrency
+		ac.Buffer = mc.Buffer
+		if mc.Interval != nil {
+			if d, err := time.ParseDuration(string(*mc.Interval)); err == nil {
+				ac.MinRTTCalcInterval = &metav1.Duration{Duration: d}
+			}
+		}
+		if mc.FixedMinRTT != nil {
+			if d, err := time.ParseDuration(string(*mc.FixedMinRTT)); err == nil {
+				ac.FixedMinRTT = &metav1.Duration{Duration: d}
+			}
+		}
+	}
+
+	return ac
 }
 
 func buildBackendTelemetry(telemetry *egv1a1.BackendTelemetry) *ir.BackendTelemetry {

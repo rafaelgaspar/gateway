@@ -351,6 +351,62 @@ func TestBuildTrafficFeaturesRequestBufferMode(t *testing.T) {
 	})
 }
 
+func TestBuildAdaptiveConcurrency(t *testing.T) {
+	interval := gwapiv1.Duration("200ms")
+	minRTT := gwapiv1.Duration("30s")
+	fixed := gwapiv1.Duration("0s")
+	policy := &egv1a1.BackendTrafficPolicy{
+		TypeMeta: metav1.TypeMeta{Kind: egv1a1.KindBackendTrafficPolicy},
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "policy-for-route",
+			Namespace: "default",
+		},
+		Spec: egv1a1.BackendTrafficPolicySpec{
+			AdaptiveConcurrency: &egv1a1.AdaptiveConcurrency{
+				ConcurrencyLimitExceededStatus: new(int32(429)),
+				GradientController: &egv1a1.GradientController{
+					SampleAggregatePercentile: new(float64(90)),
+					ConcurrencyLimitParams: &egv1a1.ConcurrencyLimitParams{
+						MaxConcurrencyLimit:       new(uint32(500)),
+						ConcurrencyUpdateInterval: &interval,
+					},
+					MinRTTCalcParams: &egv1a1.MinRTTCalcParams{
+						Interval:       &minRTT,
+						FixedMinRTT:    &fixed,
+						RequestCount:   new(uint32(100)),
+						Jitter:         new(float64(10)),
+						MinConcurrency: new(uint32(5)),
+						Buffer:         new(float64(30)),
+					},
+				},
+			},
+		},
+	}
+
+	require.Nil(t, buildAdaptiveConcurrency(&egv1a1.BackendTrafficPolicy{}))
+
+	empty := buildAdaptiveConcurrency(&egv1a1.BackendTrafficPolicy{
+		TypeMeta:   metav1.TypeMeta{Kind: egv1a1.KindBackendTrafficPolicy},
+		ObjectMeta: metav1.ObjectMeta{Name: "empty", Namespace: "default"},
+		Spec:       egv1a1.BackendTrafficPolicySpec{AdaptiveConcurrency: &egv1a1.AdaptiveConcurrency{}},
+	})
+	require.Equal(t, "backendtrafficpolicy/default/empty", empty.Name)
+	require.Nil(t, empty.SampleAggregatePercentile)
+
+	got := buildAdaptiveConcurrency(policy)
+	require.Equal(t, "backendtrafficpolicy/default/policy-for-route", got.Name)
+	require.Equal(t, new(float64(90)), got.SampleAggregatePercentile)
+	require.Equal(t, new(uint32(500)), got.MaxConcurrencyLimit)
+	require.Equal(t, 200*time.Millisecond, got.ConcurrencyUpdateInterval.Duration)
+	require.Equal(t, 30*time.Second, got.MinRTTCalcInterval.Duration)
+	require.Equal(t, time.Duration(0), got.FixedMinRTT.Duration)
+	require.Equal(t, new(uint32(100)), got.RequestCount)
+	require.Equal(t, new(float64(10)), got.Jitter)
+	require.Equal(t, new(uint32(5)), got.MinConcurrency)
+	require.Equal(t, new(float64(30)), got.Buffer)
+	require.Equal(t, new(int32(429)), got.ConcurrencyLimitExceededStatus)
+}
+
 func TestBuildPassiveHealthCheck(t *testing.T) {
 	cases := []struct {
 		name     string
@@ -3119,31 +3175,32 @@ func TestBTPClusterSettingsIndex(t *testing.T) {
 // btpSpecHasClusterScopedFields, so a new field must be explicitly classified here too.
 func TestBtpSpecHasClusterScopedFieldsExhaustive(t *testing.T) {
 	expected := map[string]bool{
-		"LoadBalancer":      true,
-		"Retry":             false,
-		"ProxyProtocol":     true,
-		"TCPKeepalive":      true,
-		"HealthCheck":       true,
-		"CircuitBreaker":    true,
-		"Timeout":           true,
-		"Connection":        true,
-		"DNS":               true,
-		"HTTP2":             true,
-		"HTTP3":             true,
-		"MergeType":         false,
-		"RateLimit":         false,
-		"BandwidthLimit":    false,
-		"FaultInjection":    false,
-		"AdmissionControl":  true,
-		"UseClientProtocol": true,
-		"HTTP1":             true,
-		"Compression":       false,
-		"Compressor":        false,
-		"ResponseOverride":  false,
-		"HTTPUpgrade":       false,
-		"RequestBuffer":     false,
-		"Telemetry":         false,
-		"RoutingType":       false,
+		"LoadBalancer":        true,
+		"Retry":               false,
+		"ProxyProtocol":       true,
+		"TCPKeepalive":        true,
+		"HealthCheck":         true,
+		"CircuitBreaker":      true,
+		"Timeout":             true,
+		"Connection":          true,
+		"DNS":                 true,
+		"HTTP2":               true,
+		"HTTP3":               true,
+		"MergeType":           false,
+		"RateLimit":           false,
+		"BandwidthLimit":      false,
+		"FaultInjection":      false,
+		"AdmissionControl":    true,
+		"UseClientProtocol":   true,
+		"HTTP1":               true,
+		"Compression":         false,
+		"Compressor":          false,
+		"ResponseOverride":    false,
+		"HTTPUpgrade":         false,
+		"RequestBuffer":       false,
+		"Telemetry":           false,
+		"RoutingType":         false,
+		"AdaptiveConcurrency": false,
 	}
 
 	actualFields := structFieldNames(reflect.TypeOf(egv1a1.BackendTrafficPolicySpec{}), map[string]bool{"PolicyTargetReferences": true})

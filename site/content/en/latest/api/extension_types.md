@@ -191,6 +191,28 @@ _Appears in:_
 | `GRPC` | ActiveHealthCheckerTypeGRPC defines the GRPC type of health checking.<br /> | 
 
 
+#### AdaptiveConcurrency
+
+
+
+AdaptiveConcurrency configures Envoy's adaptive concurrency HTTP filter, which
+dynamically adjusts the allowed request concurrency based on sampled latencies.
+This protects backends from overload by shedding load when latency increases.
+
+Each BackendTrafficPolicy gets its own filter instance so concurrency state is
+not shared across unrelated routes. Empty configuration uses Envoy's documented
+gradient-controller defaults, except concurrencyUpdateInterval, which Envoy
+requires and Envoy Gateway defaults to 100ms.
+
+_Appears in:_
+- [BackendTrafficPolicySpec](#backendtrafficpolicyspec)
+
+| Field | Type | Required | Default | Description |
+| ---   | ---  | ---      | ---     | ---         |
+| `gradientController` | _[GradientController](#gradientcontroller)_ |  false  |  | GradientController configures the gradient-based concurrency controller.<br />This is the core algorithm that adjusts the concurrency limit based on<br />latency measurements. |
+| `concurrencyLimitExceededStatus` | _integer_ |  false  | 503 | ConcurrencyLimitExceededStatus sets the HTTP status code returned to<br />downstream clients when the concurrency limit is exceeded.<br />Defaults to 503 (Service Unavailable). |
+
+
 #### AdmissionControl
 
 
@@ -685,6 +707,7 @@ _Appears in:_
 | `bandwidthLimit` | _[BandwidthLimitSpec](#bandwidthlimitspec)_ |  false  |  | BandwidthLimit allows the user to limit the bandwidth of traffic<br />sent to and received from the backend. |
 | `faultInjection` | _[FaultInjection](#faultinjection)_ |  false  |  | FaultInjection defines the fault injection policy to be applied. This configuration can be used to<br />inject delays and abort requests to mimic failure scenarios such as service failures and overloads |
 | `admissionControl` | _[AdmissionControl](#admissioncontrol)_ |  false  |  | AdmissionControl defines the admission control policy to be applied. This configuration<br />probabilistically rejects requests based on the success rate of previous requests in a<br />configurable sliding time window. |
+| `adaptiveConcurrency` | _[AdaptiveConcurrency](#adaptiveconcurrency)_ |  false  |  | AdaptiveConcurrency defines the configuration for Envoy's adaptive<br />concurrency filter, which dynamically adjusts the allowed request<br />concurrency limit based on sampled latencies. This helps protect<br />backends from overload by automatically shedding load when latency<br />increases. |
 | `useClientProtocol` | _boolean_ |  false  |  | UseClientProtocol configures Envoy to prefer sending requests to backends using<br />the same HTTP protocol that the incoming request used. Defaults to false, which means<br />that Envoy will use the protocol indicated by the attached BackendRef. |
 | `compression` | _[Compression](#compression) array_ |  false  |  | The compression config for the http streams.<br />Deprecated: Use Compressor instead. |
 | `compressor` | _[Compression](#compression) array_ |  false  |  | The compressor config for the http streams.<br />This provides more granular control over compression configuration.<br />Order matters: The first compressor in the list is preferred when q-values in Accept-Encoding are equal. |
@@ -1290,6 +1313,22 @@ _Appears in:_
 | `Zstd` |  | 
 
 
+#### ConcurrencyLimitParams
+
+
+
+ConcurrencyLimitParams controls parameters for the periodic recalculation
+of the concurrency limit from sampled request latencies.
+
+_Appears in:_
+- [GradientController](#gradientcontroller)
+
+| Field | Type | Required | Default | Description |
+| ---   | ---  | ---      | ---     | ---         |
+| `maxConcurrencyLimit` | _integer_ |  false  | 1000 | MaxConcurrencyLimit sets the upper bound on the concurrency limit.<br />Defaults to 1000. |
+| `concurrencyUpdateInterval` | _[Duration](https://gateway-api.sigs.k8s.io/reference/api-spec/1.5/spec/#duration)_ |  false  | 100ms | ConcurrencyUpdateInterval is the period of time between<br />recalculations of the concurrency limit.<br />Defaults to 100ms. Envoy requires this field to be greater than 0s. |
+
+
 #### ConnectConfig
 
 
@@ -1857,6 +1896,7 @@ _Appears in:_
 | `envoy.filters.http.grpc_json_transcoder` | EnvoyFilterGRPCJSONTranscoder defines the Envoy HTTP gRPC-JSON transcoder filter.<br /> | 
 | `envoy.filters.http.grpc_stats` | EnvoyFilterGRPCStats defines the Envoy HTTP gRPC stats filter.<br /> | 
 | `envoy.filters.http.credential_injector` | EnvoyFilterCredentialInjector defines the Envoy HTTP credential injector filter.<br /> | 
+| `envoy.filters.http.adaptive_concurrency` | EnvoyFilterAdaptiveConcurrency defines the Envoy HTTP adaptive concurrency filter.<br /> | 
 | `envoy.filters.http.compressor` | EnvoyFilterCompressor defines the Envoy HTTP compressor filter.<br /> | 
 | `envoy.filters.http.dynamic_forward_proxy` | EnvoyFilterDynamicForwardProxy defines the Envoy HTTP dynamic forward proxy filter.<br /> | 
 | `envoy.filters.http.alternate_protocols_cache` | EnvoyFilterAlternateProtocolsCache defines the Envoy HTTP alternate protocols cache filter.<br /> | 
@@ -2520,7 +2560,7 @@ _Appears in:_
 | `mergeGateways` | _boolean_ |  false  |  | MergeGateways defines if Gateway resources should be merged onto the same Envoy Proxy Infrastructure.<br />Setting this field to true would merge all Gateway Listeners under the parent Gateway Class.<br />This means that the port, protocol and hostname tuple must be unique for every listener.<br />If a duplicate listener is detected, the newer listener (based on timestamp) will be rejected and its status will be updated with a "Accepted=False" condition.<br />Mutually exclusive with MergeBackends. |
 | `mergeBackends` | _[MergeBackendsConfig](#mergebackendsconfig)_ |  false  |  | MergeBackends configures cluster deduplication: routes that reference the same backend<br />share a single Envoy cluster instead of Envoy Gateway generating one cluster per route<br />rule. This reduces xDS size, active health-check traffic, and stats cardinality, and<br />improves upstream connection pooling.<br />Only a route's own backendRefs (HTTPRoute, GRPCRoute, TLSRoute, TCPRoute, UDPRoute) are<br />considered. A backend used any other way, such as a RequestMirror filter or an external<br />service of a SecurityPolicy or EnvoyExtensionPolicy, is never merged. A BackendTrafficPolicy<br />that targets a backend only reports status for Gateways where the backend is used as a route<br />backendRef.<br />Disabled when unset; specifying this field at all (even without further configuration)<br />enables it. Mutually exclusive with MergeGateways. |
 | `shutdown` | _[ShutdownConfig](#shutdownconfig)_ |  false  |  | Shutdown defines configuration for graceful envoy shutdown process. |
-| `filterOrder` | _[FilterPosition](#filterposition) array_ |  false  |  | FilterOrder defines the order of filters in the Envoy proxy's HTTP filter chain.<br />The FilterPosition in the list will be applied in the order they are defined.<br />If unspecified, the default filter order is applied.<br />Default filter order is:<br />- envoy.filters.http.custom_response<br />- envoy.filters.http.health_check<br />- envoy.filters.http.fault<br />- envoy.filters.http.cors<br />- envoy.filters.http.header_mutation<br />- envoy.filters.http.ext_authz<br />- envoy.filters.http.api_key_auth<br />- envoy.filters.http.basic_auth<br />- envoy.filters.http.oauth2<br />- envoy.filters.http.jwt_authn<br />- envoy.filters.http.stateful_session<br />- envoy.filters.http.buffer<br />- envoy.filters.http.lua<br />- envoy.filters.http.ext_proc<br />- envoy.filters.http.wasm<br />- envoy.filters.http.dynamic_modules<br />- envoy.filters.http.geoip<br />- envoy.filters.http.rbac<br />- envoy.filters.http.local_ratelimit<br />- envoy.filters.http.ratelimit<br />- envoy.filters.http.bandwidth_limit<br />- envoy.filters.http.grpc_web<br />- envoy.filters.http.grpc_json_transcoder<br />- envoy.filters.http.grpc_stats<br />- envoy.filters.http.credential_injector<br />- envoy.filters.http.compressor<br />- envoy.filters.http.dynamic_forward_proxy<br />- envoy.filters.http.alternate_protocols_cache<br />- envoy.filters.http.router<br />Note: "envoy.filters.http.router" cannot be reordered, it's always the last filter in the chain. |
+| `filterOrder` | _[FilterPosition](#filterposition) array_ |  false  |  | FilterOrder defines the order of filters in the Envoy proxy's HTTP filter chain.<br />The FilterPosition in the list will be applied in the order they are defined.<br />If unspecified, the default filter order is applied.<br />Default filter order is:<br />- envoy.filters.http.custom_response<br />- envoy.filters.http.health_check<br />- envoy.filters.http.fault<br />- envoy.filters.http.cors<br />- envoy.filters.http.header_mutation<br />- envoy.filters.http.ext_authz<br />- envoy.filters.http.api_key_auth<br />- envoy.filters.http.basic_auth<br />- envoy.filters.http.oauth2<br />- envoy.filters.http.jwt_authn<br />- envoy.filters.http.stateful_session<br />- envoy.filters.http.buffer<br />- envoy.filters.http.lua<br />- envoy.filters.http.ext_proc<br />- envoy.filters.http.wasm<br />- envoy.filters.http.dynamic_modules<br />- envoy.filters.http.geoip<br />- envoy.filters.http.rbac<br />- envoy.filters.http.local_ratelimit<br />- envoy.filters.http.ratelimit<br />- envoy.filters.http.bandwidth_limit<br />- envoy.filters.http.grpc_web<br />- envoy.filters.http.grpc_json_transcoder<br />- envoy.filters.http.grpc_stats<br />- envoy.filters.http.credential_injector<br />- envoy.filters.http.adaptive_concurrency<br />- envoy.filters.http.compressor<br />- envoy.filters.http.dynamic_forward_proxy<br />- envoy.filters.http.alternate_protocols_cache<br />- envoy.filters.http.router<br />Note: "envoy.filters.http.router" cannot be reordered, it's always the last filter in the chain. |
 | `backendTLS` | _[BackendTLSConfig](#backendtlsconfig)_ |  false  |  | BackendTLS is the TLS configuration for the Envoy proxy to use when connecting to backends.<br />These settings are applied on backends for which TLS policies are specified. |
 | `ipFamily` | _[IPFamily](#ipfamily)_ |  false  |  | IPFamily specifies the IP family for the EnvoyProxy fleet.<br />This setting only affects the Gateway listener port and does not impact<br />other aspects of the Envoy proxy configuration.<br />If not specified, the system will operate as follows:<br />- It defaults to IPv4 only.<br />- IPv6 and dual-stack environments are not supported in this default configuration.<br />Note: To enable IPv6 or dual-stack functionality, explicit configuration is required. |
 | `preserveRouteOrder` | _boolean_ |  false  |  | PreserveRouteOrder determines if the order of matching for HTTPRoutes is determined by Gateway-API<br />specification (https://gateway-api.sigs.k8s.io/reference/api-spec/main/spec/#httprouterule)<br />or preserves the order defined by users in the HTTPRoute's HTTPRouteRule list.<br />Default: False |
@@ -3180,6 +3220,24 @@ _Appears in:_
 | Field | Type | Required | Default | Description |
 | ---   | ---  | ---      | ---     | ---         |
 | `rules` | _[RateLimitRule](#ratelimitrule) array_ |  true  |  | Rules are a list of RateLimit selectors and limits. Each rule and its<br />associated limit is applied in a mutually exclusive way. If a request<br />matches multiple rules, each of their associated limits get applied, so a<br />single request might increase the rate limit counters for multiple rules<br />if selected. The rate limit service will return a logical OR of the individual<br />rate limit decisions of all matching rules. For example, if a request<br />matches two rules, one rate limited and one not, the final decision will be<br />to rate limit the request. |
+
+
+#### GradientController
+
+
+
+GradientController configures the gradient-based concurrency controller algorithm.
+The controller periodically samples request latencies and adjusts the concurrency
+limit using a gradient calculated from the current vs minimum RTT.
+
+_Appears in:_
+- [AdaptiveConcurrency](#adaptiveconcurrency)
+
+| Field | Type | Required | Default | Description |
+| ---   | ---  | ---      | ---     | ---         |
+| `sampleAggregatePercentile` | _float_ |  false  | 50 | SampleAggregatePercentile specifies the percentile to use when<br />summarizing aggregated latency samples. Defaults to 50 (p50). |
+| `concurrencyLimitParams` | _[ConcurrencyLimitParams](#concurrencylimitparams)_ |  false  |  | ConcurrencyLimitParams controls the periodic concurrency limit<br />recalculation. |
+| `minRTTCalcParams` | _[MinRTTCalcParams](#minrttcalcparams)_ |  false  |  | MinRTTCalcParams controls the periodic minRTT recalculation. |
 
 
 #### GroupVersionKind
@@ -4813,6 +4871,25 @@ _Appears in:_
 | Value | Description |
 | ----- | ----------- |
 | `OpenTelemetry` |  | 
+
+
+#### MinRTTCalcParams
+
+
+
+MinRTTCalcParams controls parameters for the periodic minRTT recalculation.
+
+_Appears in:_
+- [GradientController](#gradientcontroller)
+
+| Field | Type | Required | Default | Description |
+| ---   | ---  | ---      | ---     | ---         |
+| `interval` | _[Duration](https://gateway-api.sigs.k8s.io/reference/api-spec/1.5/spec/#duration)_ |  false  | 30s | Interval is the time interval between recalculating the minimum RTT.<br />Defaults to 30s. Setting this to 0s disables dynamic minRTT sampling<br />(FixedMinRTT is required in that case). |
+| `fixedMinRTT` | _[Duration](https://gateway-api.sigs.k8s.io/reference/api-spec/1.5/spec/#duration)_ |  false  |  | FixedMinRTT sets a fixed minimum RTT value instead of dynamically<br />sampling it. This is required when Interval is set to 0s. |
+| `requestCount` | _integer_ |  false  | 50 | RequestCount is the number of requests to aggregate during the minRTT<br />recalculation window. Defaults to 50. |
+| `jitter` | _float_ |  false  | 15 | Jitter adds a randomized delay to the start of the minRTT calculation<br />window, expressed as a percentage of the interval. Defaults to 15%. |
+| `minConcurrency` | _integer_ |  false  | 3 | MinConcurrency sets the concurrency limit used while measuring the<br />minRTT. Defaults to 3. |
+| `buffer` | _float_ |  false  | 25 | Buffer is the amount added to the measured minRTT to add stability<br />to the concurrency limit, expressed as a percentage of the measured<br />value. Defaults to 25%. |
 
 
 #### OIDC

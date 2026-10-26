@@ -989,6 +989,94 @@ func TestBackendTrafficPolicyTarget(t *testing.T) {
 			wantErrors: []string{"admissionControl can only be used with HTTPRoute, GRPCRoute, Gateway, or ListenerSet targets, or with Service, ServiceImport, or Backend targets via targetRef/targetRefs (targetSelectors is not supported for those kinds)"},
 		},
 		{
+			desc: "valid adaptiveConcurrency on HTTPRoute",
+			mutate: func(btp *egv1a1.BackendTrafficPolicy) {
+				interval := gwapiv1.Duration("200ms")
+				btp.Spec = egv1a1.BackendTrafficPolicySpec{
+					PolicyTargetReferences: egv1a1.PolicyTargetReferences{
+						TargetRef: &gwapiv1.LocalPolicyTargetReferenceWithSectionName{
+							LocalPolicyTargetReference: gwapiv1.LocalPolicyTargetReference{
+								Group: gwapiv1.Group("gateway.networking.k8s.io"),
+								Kind:  gwapiv1.Kind("HTTPRoute"),
+								Name:  gwapiv1.ObjectName("httpbin-route"),
+							},
+						},
+					},
+					AdaptiveConcurrency: &egv1a1.AdaptiveConcurrency{
+						GradientController: &egv1a1.GradientController{
+							SampleAggregatePercentile: new(float64(90)),
+							ConcurrencyLimitParams: &egv1a1.ConcurrencyLimitParams{
+								ConcurrencyUpdateInterval: &interval,
+							},
+						},
+					},
+				}
+			},
+			wantErrors: []string{},
+		},
+		{
+			desc: "adaptiveConcurrency rejected on TCPRoute target",
+			mutate: func(btp *egv1a1.BackendTrafficPolicy) {
+				btp.Spec = egv1a1.BackendTrafficPolicySpec{
+					PolicyTargetReferences: egv1a1.PolicyTargetReferences{
+						TargetRef: &gwapiv1.LocalPolicyTargetReferenceWithSectionName{
+							LocalPolicyTargetReference: gwapiv1.LocalPolicyTargetReference{
+								Group: gwapiv1.Group("gateway.networking.k8s.io"),
+								Kind:  gwapiv1.Kind("TCPRoute"),
+								Name:  gwapiv1.ObjectName("tcp-route"),
+							},
+						},
+					},
+					AdaptiveConcurrency: &egv1a1.AdaptiveConcurrency{},
+				}
+			},
+			wantErrors: []string{"adaptiveConcurrency can only be used with HTTPRoute, GRPCRoute, Gateway, or ListenerSet targets"},
+		},
+		{
+			desc: "adaptiveConcurrency rejected on Service target",
+			mutate: func(btp *egv1a1.BackendTrafficPolicy) {
+				btp.Spec = egv1a1.BackendTrafficPolicySpec{
+					PolicyTargetReferences: egv1a1.PolicyTargetReferences{
+						TargetRef: &gwapiv1.LocalPolicyTargetReferenceWithSectionName{
+							LocalPolicyTargetReference: gwapiv1.LocalPolicyTargetReference{
+								Group: gwapiv1.Group(""),
+								Kind:  gwapiv1.Kind("Service"),
+								Name:  gwapiv1.ObjectName("svc-1"),
+							},
+						},
+					},
+					MergeType:           new(egv1a1.StrategicMerge),
+					AdaptiveConcurrency: &egv1a1.AdaptiveConcurrency{},
+				}
+			},
+			wantErrors: []string{"adaptiveConcurrency is not allowed when targeting a backend"},
+		},
+		{
+			desc: "adaptiveConcurrency interval 0s requires fixedMinRTT",
+			mutate: func(btp *egv1a1.BackendTrafficPolicy) {
+				zero := gwapiv1.Duration("0s")
+				btp.Spec = egv1a1.BackendTrafficPolicySpec{
+					PolicyTargetReferences: egv1a1.PolicyTargetReferences{
+						TargetRef: &gwapiv1.LocalPolicyTargetReferenceWithSectionName{
+							LocalPolicyTargetReference: gwapiv1.LocalPolicyTargetReference{
+								Group: gwapiv1.Group("gateway.networking.k8s.io"),
+								Kind:  gwapiv1.Kind("HTTPRoute"),
+								Name:  gwapiv1.ObjectName("httpbin-route"),
+							},
+						},
+					},
+					AdaptiveConcurrency: &egv1a1.AdaptiveConcurrency{
+						GradientController: &egv1a1.GradientController{
+							MinRTTCalcParams: &egv1a1.MinRTTCalcParams{
+								Interval: &zero,
+							},
+						},
+					},
+				}
+			},
+			wantErrors: []string{"fixedMinRTT is required when minRTTCalcParams.interval is 0s"},
+		},
+		{
 			desc: "no targetRef",
 			mutate: func(btp *egv1a1.BackendTrafficPolicy) {
 				btp.Spec = egv1a1.BackendTrafficPolicySpec{}
